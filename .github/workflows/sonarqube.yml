@@ -83,7 +83,7 @@ jobs:
           HTTP_CODE=$(curl -sS -G \
             -u "$SONAR_TOKEN:" \
             --data-urlencode "component=$SONAR_PROJECT_KEY" \
-            --data-urlencode "metricKeys=complexity,cognitive_complexity,duplicated_lines_density,line_coverage,branch_coverage,bugs,vulnerabilities,code_smells,software_quality_maintainability_rating,sqale_index" \
+            --data-urlencode "metricKeys=complexity,cognitive_complexity,duplicated_lines_density,line_coverage,branch_coverage,bugs,vulnerabilities,code_smells,sqale_index" \
             -o report/api-response.json \
             -w "%{http_code}" \
             "https://sonarcloud.io/api/measures/component") || {
