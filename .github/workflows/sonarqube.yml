@@ -44,7 +44,7 @@ jobs:
             /d:sonar.cs.vscoveragexml.reportsPaths="coverage.xml"
 
       - name: Build
-        run: dotnet build --solution eShop.Web.slnf --no-incremental
+        run: dotnet build eShop.Web.slnf --no-incremental
 
       - name: Run tests and collect coverage
         env:
