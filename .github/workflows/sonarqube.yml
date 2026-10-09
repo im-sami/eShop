@@ -79,44 +79,27 @@ jobs:
             exit 0
           fi
 
-          RESPONSE=$(curl -fsS -G \
+          
+          HTTP_CODE=$(curl -sS -G \
             -u "$SONAR_TOKEN:" \
             --data-urlencode "component=$SONAR_PROJECT_KEY" \
             --data-urlencode "metricKeys=complexity,cognitive_complexity,duplicated_lines_density,line_coverage,branch_coverage,bugs,vulnerabilities,code_smells,software_quality_maintainability_rating,sqale_index" \
+            -o report/api-response.json \
+            -w "%{http_code}" \
             "https://sonarcloud.io/api/measures/component") || {
-              echo "Could not retrieve metrics from SonarQube Cloud." > report/sonarqube-report.md
-              exit 0
+              echo "curl failed to contact SonarQube Cloud."
+              exit 1
             }
 
-          export RESPONSE
-          {
-            echo "# eShop SonarQube Metrics Report"
-            echo
-            echo "- **Project:** $SONAR_PROJECT_KEY"
-            echo "- **Generated:** $(date -u '+%Y-%m-%d %H:%M UTC')"
-            echo
-            echo "| Metric | Value |"
-            echo "|---|---:|"
-            echo "$RESPONSE" | jq -r '
-              (.component.measures // [] | map({(.metric): .value}) | add // {}) as $m |
-              "| Cyclomatic complexity | \($m.complexity // "N/A") |",
-              "| Cognitive complexity | \($m.cognitive_complexity // "N/A") |",
-              "| Code duplication (%) | \($m.duplicated_lines_density // "N/A") |",
-              "| Line coverage (%) | \($m.line_coverage // "N/A") |",
-              "| Branch coverage (%) | \($m.branch_coverage // "N/A") |",
-              "| Bugs | \($m.bugs // "N/A") |",
-              "| Vulnerabilities | \($m.vulnerabilities // "N/A") |",
-              "| Code smells | \($m.code_smells // "N/A") |",
-              "| Maintainability rating | \($m.software_quality_maintainability_rating // "N/A") |",
-              "| Technical debt (minutes) | \($m.sqale_index // "N/A") |"
-            '
-            echo
-            echo "## Notes"
-            echo
-            echo "- Line coverage is a proxy for statement coverage."
-            echo "- Maintainability rating is not the traditional Maintainability Index (MI)."
-            echo "- N/A means SonarQube did not return a value."
-          } > report/sonarqube-report.md
+          echo "SonarQube API HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "API response body:"
+            cat report/api-response.json
+            exit 1
+          fi
+
+          RESPONSE=$(cat report/api-response.json)
 
       - name: Upload Markdown report
         if: always()
