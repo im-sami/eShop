@@ -52,6 +52,7 @@ jobs:
         shell: bash
         run: |
           set +e
+
           dotnet-coverage collect \
             "dotnet test --solution eShop.Web.slnf --no-build" \
             -f xml -o coverage.xml
@@ -63,6 +64,7 @@ jobs:
           if [ "$scan_status" -ne 0 ]; then
             exit "$scan_status"
           fi
+
           exit "$test_status"
 
       - name: Generate SonarQube Markdown report
@@ -73,13 +75,21 @@ jobs:
         shell: bash
         run: |
           mkdir -p report
+          REPORT="report/sonarqube-report.md"
+
+          {
+            echo "# eShop SonarQube Metrics Report"
+            echo
+            echo "- **Project key:** ${SONAR_PROJECT_KEY:-Not configured}"
+            echo "- **Generated:** $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo
+          } > "$REPORT"
 
           if [ -z "$SONAR_PROJECT_KEY" ] || [ -z "$SONAR_TOKEN" ]; then
-            echo "Missing SonarQube project key or token." > report/sonarqube-report.md
+            echo "SonarQube project key or token is missing." >> "$REPORT"
             exit 0
           fi
 
-          
           HTTP_CODE=$(curl -sS -G \
             -u "$SONAR_TOKEN:" \
             --data-urlencode "component=$SONAR_PROJECT_KEY" \
@@ -87,19 +97,52 @@ jobs:
             -o report/api-response.json \
             -w "%{http_code}" \
             "https://sonarcloud.io/api/measures/component") || {
-              echo "curl failed to contact SonarQube Cloud."
-              exit 1
+              echo "Could not connect to SonarQube Cloud." >> "$REPORT"
+              exit 0
             }
 
           echo "SonarQube API HTTP status: $HTTP_CODE"
 
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "API response body:"
-            cat report/api-response.json
-            exit 1
+            {
+              echo "## API Error"
+              echo
+              echo "HTTP status: $HTTP_CODE"
+              echo
+              echo '```json'
+              cat report/api-response.json
+              echo
+              echo '```'
+            } >> "$REPORT"
+            exit 0
           fi
 
-          RESPONSE=$(cat report/api-response.json)
+          jq -r '
+            (.component.measures // []
+              | map({(.metric): .value}) | add // {}) as $m |
+            "## Metrics",
+            "",
+            "| Metric | Value |",
+            "|---|---:|",
+            "| Cyclomatic complexity | \($m.complexity // "N/A") |",
+            "| Cognitive complexity | \($m.cognitive_complexity // "N/A") |",
+            "| Code duplication (%) | \($m.duplicated_lines_density // "N/A") |",
+            "| Line coverage (%) | \($m.line_coverage // "N/A") |",
+            "| Branch coverage (%) | \($m.branch_coverage // "N/A") |",
+            "| Bugs | \($m.bugs // "N/A") |",
+            "| Vulnerabilities | \($m.vulnerabilities // "N/A") |",
+            "| Code smells | \($m.code_smells // "N/A") |",
+            "| Technical debt (minutes) | \($m.sqale_index // "N/A") |",
+            "",
+            "## Notes",
+            "",
+            "- Line coverage is used as a proxy for statement coverage; the two definitions may differ.",
+            "- Technical debt is not the traditional Maintainability Index (MI).",
+            "- N/A means the metric was not returned by SonarQube."
+          ' report/api-response.json >> "$REPORT"
+
+          echo "Markdown report generated at $REPORT"
+          cat "$REPORT"
 
       - name: Upload Markdown report
         if: always()
